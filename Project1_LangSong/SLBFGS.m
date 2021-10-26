@@ -1,100 +1,76 @@
-function [w,f,normgrad] = SLBFGS(fun,gfun,label,w,kmax,tol)
-    gam = 0.9; % line search step factor
-    jmax = ceil(log(1e-14)/log(gam)); % max # of iterations in line search 
-    eta = 0.5; % backtracking stopping criterion factor
-    alpha=0.007;
-    m0=60;
-    l=0;
+function [w,f,normgrad] = SLBFGS(fun,gfun,Y,w,bsz,kmax,tol)
+    stepsize=0.1;
+    Ng = bsz;
+    Nh = 800;
+    m0=100;
     m=5;
-    Ng=1301;
-    NH=4000;
-    M=10;
-    n = size(label,1);
-    [n,~] = size(label);
+    freq = 10;
+    n = size(Y,1);
     I = 1:n;
     f = zeros(kmax + 1,1);
     f(1) = fun(I,w);
     normgrad = zeros(kmax,1);
-    npar=length(w);
-    s=zeros(npar,m);
-    y=zeros(npar,m);
-    rho=zeros(m);
-    %first do one step of gradient descent
-    Ig = randperm(n,Ng);
-    g=gfun(Ig,w);
-    wnew=w-alpha*g;
-    gnew=gfun(Ig,wnew);
-    s(:,1) = wnew - w;
-    y(:,1) = gnew - g;
-    rho(1) = 1/(s(:,1)'*y(:,1));
-    H=s(:,1)'*y(:,1)/(y(:,1)'*y(:,1));
-    wr=wnew;
-    r=1;
-    for k=1:kmax
-        Ig = randperm(n,Ng);
-        normgrad(k) = norm(gfun(Ig,w));
-        sg=gfun(Ig,w);
-        p=-H*sg;
-
-        wnew=w+alpha*p;
-        f(k + 1) = fun(I,wnew);
-        w=wnew;
-        if mod(k,M)==0
-            IH = randperm(n,NH);
-            s=circshift(s,[0,1]);
-            y=circshift(y,[0,1]);
-            rho = circshift(rho,[0,1]);
-            s(:,1) = wnew-wr;
-            y(:,1) = gfun(IH,wnew) - gfun(IH,wr);
-            rho(1) = 1/(s(:,1)'*y(:,1));
-            wr = wnew;
-            r=r+1;
-            if r<m
-                H=s(:,1)'*y(:,1)/(y(:,1)'*y(:,1));
-                for j=1:r-1
-                    V=(eye(npar)-rho(r-j)*y(:,r-j)*s(:,r-j)');
-                    rh=1/(y(:,r-j)'*s(:,r-j));
-                    H=V'*H*V+rh*(s*s');
-                end
+    
+    % Stochastic gradient descent process
+    r_index = randperm(n,Ng);
+    g = gfun(r_index,w);
+    w0 = w-stepsize*g;
+    g0 = gfun(r_index,w0);
+    s = w0 - w;
+    y = g0 - g;
+    rho = 1/(s'*y);
+    
+    for iter=1:kmax
+        if iter<=m0
+            alpha=stepsize;
+        elseif iter<=2*m0
+            alpha=stepsize/2;
+        else %if current iteration is greater than 2*m0 
+            cur_iter = iter-2*m0;
+            index = 2:40;
+            factor = idivide(int64(2.^index),int64(index));
+            round_length = m0.*cumsum(factor);
+            round_index = find(round_length > cur_iter, 1, 'first' );
+            alpha = stepsize/(2^(round_index+1));
+        end
+        
+        r_index = randperm(n,Ng);
+        g=gfun(r_index,w);
+        p = finddirection(g,s,y,rho);
+        w_pre = w;
+        w = w + alpha*p;
+        normgrad(iter) = norm(gfun(r_index, w));
+        f(iter + 1) = fun(I,w);
+        
+        if mod(iter,freq)==0
+            index_H = randperm(n,Nh);
+            if size(s,1) == m
+                s = s(:,2:m);
+                y = y(:,2:m);
+                rho = rho(2:m);
+                s(:,m) = w-w_pre;
+                y(:,m) = gfun(index_H,w) - gfun(index_H,w_pre);
+                rho(m) = 1/(s(:,m)'*y(:,m));
             else
-                H=s(:,1)'*y(:,1)/(y(:,1)'*y(:,1));
-                for j=1:m-1
-                    V=(eye(npar)-rho(m-j)*y(:,m-j)*s(:,m-j)');
-                    rh=1/(y(:,m-j)'*s(:,m-j));
-                    H=V'*H*V+rh*(s*s');
-                end
+                s = [s, (w-w_pre)];
+                y = [y, (gfun(index_H,w) - gfun(index_H,w_pre))];
+                rho = [rho, 1/(s(:,end)'*y(:,end))];
             end
         end
-        if mod(k,100)==0
-            fprintf('k = %d, f = %d, ||g|| = %d\n',k,f(k+1),normgrad(k));
+        if mod(iter,100)==0
+            fprintf('iter = %d, f = %d, ||g|| = %d\n',iter,f(iter+1),normgrad(iter));
         end
-        if normgrad(k)<tol
+        if normgrad(iter)<tol
+            ret = iter;
             break;
         end
-        if (k>m0 && j>m0*2^l/l) || k==m0
-            l=l+1;
-            alpha=alpha/2;
-            j=0;
-        end
+        ret = iter;
     end
-    fprintf('k = %d, f = %d, ||g|| = %d\n',k,f(k+1),normgrad(k));
+    fprintf('iter = %d, f = %d, ||g|| = %d\n',ret,f(ret+1),normgrad(ret));
+    f = f(2:ret+1);
+    normgrad = normgrad(1:ret);
 end
 
-%%
-function [a,j] = linesearch(x,I,p,g,func,eta,gam,jmax)
-    a = 1;
-    f0 = func(I,x);
-    aux = eta*g'*p;
-    for j = 0 : jmax
-        xtry = x + a*p;
-        f1 = func(I,xtry);
-        if f1 < f0 + a*aux
-            break;
-        else
-            a = a*gam;
-        end
-    end
-end
 %%
 function p = finddirection(g,s,y,rho)
 % input: g = gradient dim-by-1

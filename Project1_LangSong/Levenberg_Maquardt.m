@@ -1,27 +1,29 @@
-function [w,f,gnorm] = Levenberg_Maquardt(Xtrain, label, w, kmax, tol)
-    R_max = 2;
-    R_min = 0.8;
-    R = (rand(1)*(R_max-R_min))+R_min;
+function [w,f,normgrad] = Levenberg_Maquardt(Xtrain,label,w,kmax,tol)
+    func = @(r) 0.5*sum(r.^2);
+    d_max = 2;
+    d_min = 0.8;
+    d0 = (rand(1)*(d_max-d_min))+d_min;
     eta = 0.2;
-    f = nan(kmax+1,1);
-    gnorm = nan(kmax+1,1);
+    f = zeros(kmax+1,1);
+    normgrad = zeros(kmax+1,1);
     R_J = @(w) Res_and_Jac(Xtrain, label, w);
     [r, J] = R_J(w);
-    f(1) = 0.5*sum(r.^2);
-    gnorm(1) = norm(J'*r);
+    f(1) = func(r);
+    normgrad(1) = norm(J'*r);
+    
     for k=1:kmax
-        [R,w] = trustregion(R, R_J, w, eta, R_max);
+        [d0,w] = trustregion(d0, R_J, w, eta, d_max);
         [r, J] = R_J(w);
         f(k+1) = 0.5*sum(r.^2);
-        gnorm(k+1) = norm(J'*r);
+        normgrad(k+1) = norm(J'*r);
         if mod(k,10)==0
-            fprintf('iter = %d, f = %d, ||g|| = %d\n',k,f(k+1),gnorm(k+1));
+            fprintf('iter = %d, f = %d, ||g|| = %d\n',k,f(k+1),normgrad(k+1));
         end
-        if gnorm(k+1)<tol
+        if normgrad(k+1)<tol
             break
         end
     end
-    fprintf('iter = %d, f = %d, ||g|| = %d\n',k,f(k+1),gnorm(k+1));
+    fprintf('iter = %d, f = %d, ||g|| = %d\n',k,f(k+1),normgrad(k+1));
 end
 
 function [R,w] = trustregion(currentRadius, func, w, eta, max_R)

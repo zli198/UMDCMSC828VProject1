@@ -97,9 +97,9 @@ tol = 1e-4;
 
 % call the optimizer
 %[w,f,gnorm] = SINewton(fun,gfun,Hvec,Y,w,bsz,kmax,tol);
-%[w,f,gnorm] = SG(fun,gfun,label,w,bsz,kmax,tol);
+[w,f,gnorm] = SG(fun,gfun,label,w,bsz,kmax,tol);
 %[w,f,gnorm] = SNAG(fun,gfun,label,w,bsz,kmax,tol);
-[w,f,gnorm] = ADAM(fun,gfun,label,w,bsz,kmax,tol);
+%[w,f,gnorm] = ADAM(fun,gfun,label,w,bsz,kmax,tol);
 %[w,f,gnorm] = SLBFGS(fun,gfun,label,w,bsz,kmax,tol);
 %[w,f,gnorm] = Levenberg_Maquardt(Xtrain, label, w, kmax, tol);
 %[w,f,gnorm] = Gauss_Newton(Xtrain, label, w, kmax, tol);
